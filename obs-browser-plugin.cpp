@@ -114,7 +114,8 @@ body { \
 background-color: rgba(0, 0, 0, 0); \
 margin: 0px auto; \
 overflow: hidden; \
-}";
+}\
+img {min-width:1920px}";
 
 static void browser_source_get_defaults(obs_data_t *settings)
 {
