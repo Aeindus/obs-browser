@@ -186,6 +186,12 @@ static obs_properties_t *browser_source_get_properties(void *data)
 	obs_properties_add_text(props, "url", obs_module_text("URL"),
 				OBS_TEXT_DEFAULT);
 
+	obs_properties_add_editable_list(
+		props, "playlist", "List of files or directories to play",
+		OBS_EDITABLE_LIST_TYPE_FILES,
+		"Image files (*.bmp *.tga *.png *.jpeg *.jpg *.gif *.webp)",
+		path);
+
 	obs_properties_add_int(props, "width", obs_module_text("Width"), 1,
 			       4096, 1);
 	obs_properties_add_int(props, "height", obs_module_text("Height"), 1,
@@ -203,9 +209,15 @@ static obs_properties_t *browser_source_get_properties(void *data)
 				obs_module_text("RerouteAudio"));
 
 	obs_properties_add_int(props, "fps", obs_module_text("FPS"), 1, 60, 1);
+
 	obs_property_t *p = obs_properties_add_text(
 		props, "css", obs_module_text("CSS"), OBS_TEXT_MULTILINE);
 	obs_property_text_set_monospace(p, true);
+
+	obs_property_t *pjs = obs_properties_add_text(props, "js", "Custom JS",
+						    OBS_TEXT_MULTILINE);
+	obs_property_text_set_monospace(pjs, true);
+
 	obs_properties_add_bool(props, "shutdown",
 				obs_module_text("ShutdownSourceNotVisible"));
 	obs_properties_add_bool(props, "restart_when_active",
@@ -451,7 +463,8 @@ void RegisterBrowserSource()
 	info.type = OBS_SOURCE_TYPE_INPUT;
 	info.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_AUDIO |
 			    OBS_SOURCE_CUSTOM_DRAW | OBS_SOURCE_INTERACTION |
-			    OBS_SOURCE_DO_NOT_DUPLICATE | OBS_SOURCE_SRGB;
+			    OBS_SOURCE_DO_NOT_DUPLICATE | OBS_SOURCE_SRGB |
+			    OBS_SOURCE_CONTROLLABLE_MEDIA;
 	info.get_properties = browser_source_get_properties;
 	info.get_defaults = browser_source_get_defaults;
 	info.icon_type = OBS_ICON_TYPE_BROWSER;
@@ -530,6 +543,9 @@ void RegisterBrowserSource()
 	info.deactivate = [](void *data) {
 		static_cast<BrowserSource *>(data)->SetActive(false);
 	};
+
+	/* Media controls*/
+	info.media_next = [](void *data) { blog(LOG_INFO, "XXXXXXXXXXX"); };
 
 	obs_register_source(&info);
 }

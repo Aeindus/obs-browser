@@ -657,6 +657,8 @@ void BrowserClient::OnAudioStreamStopped(CefRefPtr<CefBrowser> browser, int id)
 void BrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
 			      int)
 {
+	std::string js;
+
 	if (!valid()) {
 		return;
 	}
@@ -671,7 +673,22 @@ void BrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
 			  uriEncodedCSS + "\");";
 		script += "document.querySelector('head').appendChild(obsCSS);";
 
-		frame->ExecuteJavaScript(script, "", 0);
+		js += script;
+	}
+	if (frame->IsMain() && bs->js.length()) {
+		std::string uriEncodedJS =
+			CefURIEncode(bs->js, false).ToString();
+
+		std::string script;
+		script += "const obsJS = document.createElement('script');";
+		script += "obsJS.innerHTML = decodeURIComponent(\"" +
+			  uriEncodedJS + "\");";
+		script += "document.querySelector('head').appendChild(obsJS);";
+
+		js += script;
+	}
+	if (js.length()) {
+		frame->ExecuteJavaScript(js, "", 0);
 	}
 }
 

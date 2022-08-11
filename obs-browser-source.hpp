@@ -41,6 +41,10 @@ struct AudioStream {
 };
 #endif
 
+struct media_file_data {
+	char *path;
+};
+
 enum class ControlLevel : int {
 	None,
 	ReadObs,
@@ -66,11 +70,14 @@ struct BrowserSource {
 
 	std::string url;
 	std::string css;
+	std::string js;
 	gs_texture_t *texture = nullptr;
 	gs_texture_t *extra_texture = nullptr;
 	uint32_t last_cx = 0;
 	uint32_t last_cy = 0;
 	gs_color_format last_format = GS_UNKNOWN;
+
+	DARRAY(media_file_data) files;
 
 #ifdef ENABLE_BROWSER_SHARED_TEXTURE
 #ifdef _WIN32
