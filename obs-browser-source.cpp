@@ -22,11 +22,14 @@
 #include "wide-string.hpp"
 #include "json11/json11.hpp"
 #include <util/threading.h>
+#include <util/platform.h>
 #include <QApplication>
 #include <util/dstr.h>
+#include <algorithm>
 #include <functional>
 #include <thread>
 #include <mutex>
+#include <vector>
 
 #ifdef __linux__
 #include "linux-keyboard-helpers.hpp"
@@ -39,6 +42,11 @@
 
 using namespace std;
 using namespace json11;
+
+static void add_file(std::vector<media_file_data> &list, std::string path,
+		     bool from_folder = false);
+static bool valid_extension(const char *ext);
+static std::string to_lower(std::string str);
 
 extern bool QueueCEFTask(std::function<void()> task);
 
@@ -223,14 +231,14 @@ bool BrowserSource::CreateBrowser()
 		cefBrowserSettings.default_fixed_font_size = 16;
 
 #if ENABLE_LOCAL_FILE_URL_SCHEME && CHROME_VERSION_BUILD < 4430
-		if (is_local) {
+		if (IsLocal()) {
 			/* Disable web security for file:// URLs to allow
 			 * local content access to remote APIs */
 			cefBrowserSettings.web_security = STATE_DISABLED;
 		}
 #endif
 		auto browser = CefBrowserHost::CreateBrowserSync(
-			windowInfo, browserClient, url, cefBrowserSettings,
+			windowInfo, browserClient, GetUrl(), cefBrowserSettings,
 			CefRefPtr<CefDictionaryValue>(), nullptr);
 
 		SetBrowser(browser);
@@ -472,6 +480,20 @@ CefRefPtr<CefBrowser> BrowserSource::GetBrowser()
 	return cefBrowser;
 }
 
+std::string BrowserSource::GetUrl()
+{
+	if (media_files.empty())
+		return "";
+	return media_files[media_index].url;
+}
+
+bool BrowserSource::IsLocal()
+{
+	if (media_files.empty())
+		return false;
+	return media_files[media_index].is_file;
+}
+
 #ifdef ENABLE_BROWSER_SHARED_TEXTURE
 #ifdef BROWSER_EXTERNAL_BEGIN_FRAME_ENABLED
 inline void BrowserSource::SignalBeginFrame()
@@ -492,7 +514,8 @@ inline void BrowserSource::SignalBeginFrame()
 void BrowserSource::Update(obs_data_t *settings)
 {
 	if (settings) {
-		bool n_is_local;
+		obs_data_array_t *playlist_array;
+		size_t playlist_count;
 		int n_width;
 		int n_height;
 		bool n_fps_custom;
@@ -504,67 +527,101 @@ void BrowserSource::Update(obs_data_t *settings)
 		std::string n_url;
 		std::string n_css;
 		std::string n_js;
+		std::string new_url;
+		std::string last_url;
 
-		n_is_local = obs_data_get_bool(settings, "is_local_file");
+		// -------------------------------------------
+		// Add files, folders and urls to list
+		last_url = GetUrl();
+		media_files.clear();
+
+		playlist_array = obs_data_get_array(settings, "playlist");
+		playlist_count = obs_data_array_count(playlist_array);
+
+		for (size_t i = 0; i < playlist_count; i++) {
+			obs_data_t *item =
+				obs_data_array_item(playlist_array, i);
+			string path = obs_data_get_string(item, "value");
+			os_dir_t *dir = os_opendir(path.c_str());
+
+			if (dir) {
+				os_dirent *ent;
+				std::vector<media_file_data> folder_files;
+
+				for (;;) {
+					const char *ext;
+
+					ent = os_readdir(dir);
+					if (!ent)
+						break;
+					if (ent->directory)
+						continue;
+
+					ext = os_get_path_extension(
+						ent->d_name);
+					if (!valid_extension(ext))
+						continue;
+
+					std::string filepath = path + "/";
+					filepath += ent->d_name;
+					add_file(folder_files, filepath, true);
+				}
+
+				// Sort files from this folder and append to result
+				std::sort(
+					folder_files.begin(),
+					folder_files.end(),
+					[](const auto &a, const auto &b) {
+						return to_lower(a.filepath)
+							       .compare(to_lower(
+								       b.filepath)) <=
+						       0;
+					});
+				media_files.insert(media_files.end(),
+						   folder_files.begin(),
+						   folder_files.end());
+
+				os_closedir(dir);
+			} else {
+				add_file(media_files, path);
+			}
+
+			obs_data_release(item);
+		}
+		obs_data_array_release(playlist_array);
+
+		// See if the same file can be found again and go to its index
+		auto search_result =
+			std::find_if(media_files.begin(), media_files.end(),
+				     [&last_url](const auto &el) {
+					     return el.url == last_url;
+				     });
+		if (search_result == media_files.end()) {
+			media_index = 0; // Reset to beginning
+		} else {
+			media_index = search_result - media_files.begin();
+		}
+		// -------------------------------------------
+
 		n_width = (int)obs_data_get_int(settings, "width");
 		n_height = (int)obs_data_get_int(settings, "height");
 		n_fps_custom = obs_data_get_bool(settings, "fps_custom");
 		n_fps = (int)obs_data_get_int(settings, "fps");
 		n_shutdown = obs_data_get_bool(settings, "shutdown");
 		n_restart = obs_data_get_bool(settings, "restart_when_active");
-		n_url = obs_data_get_string(settings,
-					    n_is_local ? "local_file" : "url");
 		n_css = obs_data_get_string(settings, "css");
 		n_js = obs_data_get_string(settings, "js");
 		n_reroute = obs_data_get_bool(settings, "reroute_audio");
 		n_webpage_control_level = static_cast<ControlLevel>(
 			obs_data_get_int(settings, "webpage_control_level"));
+		new_url = GetUrl();
 
-		if (n_is_local && !n_url.empty()) {
-			n_url = CefURIEncode(n_url, false);
-
-#ifdef _WIN32
-			size_t slash = n_url.find("%2F");
-			size_t colon = n_url.find("%3A");
-
-			if (slash != std::string::npos &&
-			    colon != std::string::npos && colon < slash)
-				n_url.replace(colon, 3, ":");
-#endif
-
-			while (n_url.find("%5C") != std::string::npos)
-				n_url.replace(n_url.find("%5C"), 3, "/");
-
-			while (n_url.find("%2F") != std::string::npos)
-				n_url.replace(n_url.find("%2F"), 3, "/");
-
-#if !ENABLE_LOCAL_FILE_URL_SCHEME
-			/* http://absolute/ based mapping for older CEF */
-			n_url = "http://absolute/" + n_url;
-#elif defined(_WIN32)
-			/* Widows-style local file URL:
-			 * file:///C:/file/path.webm */
-			n_url = "file:///" + n_url;
-#else
-			/* UNIX-style local file URL:
-			 * file:///home/user/file.webm */
-			n_url = "file://" + n_url;
-#endif
-		}
-
-#if ENABLE_LOCAL_FILE_URL_SCHEME
-		if (astrcmpi_n(n_url.c_str(), "http://absolute/", 16) == 0) {
-			/* Replace http://absolute/ URLs with file://
-			 * URLs if file:// URLs are enabled */
-			n_url = "file:///" + n_url.substr(16);
-			n_is_local = true;
-		}
-#endif
-
-		if (n_is_local == is_local && n_fps_custom == fps_custom &&
-		    n_fps == fps && n_shutdown == shutdown_on_invisible &&
-		    n_restart == restart && n_css == css && n_js == js &&
-		    n_url == url && n_reroute == reroute_audio &&
+		// Here add check to see if we just added new files and that
+		// no reset is necesarily.
+		if (n_fps_custom == fps_custom && n_fps == fps &&
+		    n_shutdown == shutdown_on_invisible &&
+		    last_url == new_url && n_restart == restart &&
+		    n_css == css && n_js == js && n_reroute == reroute_audio &&
 		    n_webpage_control_level == webpage_control_level) {
 
 			if (n_width == width && n_height == height)
@@ -588,7 +645,6 @@ void BrowserSource::Update(obs_data_t *settings)
 			return;
 		}
 
-		is_local = n_is_local;
 		width = n_width;
 		height = n_height;
 		fps = n_fps;
@@ -599,7 +655,6 @@ void BrowserSource::Update(obs_data_t *settings)
 		restart = n_restart;
 		css = n_css;
 		js = n_js;
-		url = n_url;
 
 		obs_source_set_audio_active(source, reroute_audio);
 	}
@@ -741,4 +796,107 @@ void DispatchJSEvent(std::string eventName, std::string jsonString,
 		ExecuteOnAllBrowsers(jsEvent);
 	else
 		ExecuteOnBrowser(jsEvent, browser);
+}
+
+static void add_file(std::vector<media_file_data> &list, std::string path,
+		     bool from_folder)
+{
+	media_file_data data;
+	bool is_file = from_folder ? true
+				   : (path.find("://") == std::string::npos);
+
+	// Save original value
+	data.filepath = path;
+
+	// If path is a file then encode
+	if (is_file && !path.empty()) {
+		path = CefURIEncode(path, false);
+
+#ifdef _WIN32
+		size_t slash = path.find("%2F");
+		size_t colon = path.find("%3A");
+
+		if (slash != std::string::npos && colon != std::string::npos &&
+		    colon < slash)
+			path.replace(colon, 3, ":");
+#endif
+
+		while (path.find("%5C") != std::string::npos)
+			path.replace(path.find("%5C"), 3, "/");
+
+		while (path.find("%2F") != std::string::npos)
+			path.replace(path.find("%2F"), 3, "/");
+
+#if !ENABLE_LOCAL_FILE_URL_SCHEME
+		/* http://absolute/ based mapping for older CEF */
+		path = "http://absolute/" + path;
+#elif defined(_WIN32)
+		/* Widows-style local file URL:
+			 * file:///C:/file/path.webm */
+		path = "file:///" + path;
+#else
+		/* UNIX-style local file URL:
+			 * file:///home/user/file.webm */
+		path = "file://" + path;
+#endif
+	}
+
+#if ENABLE_LOCAL_FILE_URL_SCHEME
+	if (astrcmpi_n(path.c_str(), "http://absolute/", 16) == 0) {
+		/* Replace http://absolute/ URLs with file://
+			 * URLs if file:// URLs are enabled */
+		path = "file:///" + path.substr(16);
+		is_file = true;
+	}
+#endif
+
+	data.is_file = is_file;
+	data.url = path;
+
+	list.push_back(data);
+}
+
+static bool valid_extension(const char *ext)
+{
+	dstr test = {0};
+	bool valid = false;
+	const char *b;
+	const char *e;
+
+	if (!ext || !*ext)
+		return false;
+
+	b = &EXTENSIONS_MEDIA[1];
+	e = strchr(b, ';');
+
+	for (;;) {
+		if (e)
+			dstr_ncopy(&test, b, e - b);
+		else
+			dstr_copy(&test, b);
+
+		if (dstr_cmpi(&test, ext) == 0) {
+			valid = true;
+			break;
+		}
+
+		if (!e)
+			break;
+
+		b = e + 2;
+		e = strchr(b, ';');
+	}
+
+	dstr_free(&test);
+	return valid;
+}
+
+static std::string to_lower(std::string str)
+{
+	std::string result;
+	result.resize(str.length());
+
+	std::transform(str.begin(), str.end(), result.begin(),
+		       [](unsigned char c) { return std::tolower(c); });
+	return result;
 }

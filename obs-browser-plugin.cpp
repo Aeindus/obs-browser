@@ -62,6 +62,8 @@ MODULE_EXPORT const char *obs_module_description(void)
 using namespace std;
 using namespace json11;
 
+static DStr getFilesFilter();
+
 static thread manager_thread;
 static bool manager_initialized = false;
 os_event_t *cef_started_event = nullptr;
@@ -114,7 +116,7 @@ body { \
 background-color: rgba(0, 0, 0, 0); \
 margin: 0px auto; \
 overflow: hidden; \
-}\
+}\n\
 img {min-width:1920px}";
 
 static void browser_source_get_defaults(obs_data_t *settings)
@@ -137,18 +139,6 @@ static void browser_source_get_defaults(obs_data_t *settings)
 	obs_data_set_default_bool(settings, "reroute_audio", false);
 }
 
-static bool is_local_file_modified(obs_properties_t *props, obs_property_t *,
-				   obs_data_t *settings)
-{
-	bool enabled = obs_data_get_bool(settings, "is_local_file");
-	obs_property_t *url = obs_properties_get(props, "url");
-	obs_property_t *local_file = obs_properties_get(props, "local_file");
-	obs_property_set_visible(url, !enabled);
-	obs_property_set_visible(local_file, enabled);
-
-	return true;
-}
-
 static bool is_fps_custom(obs_properties_t *props, obs_property_t *,
 			  obs_data_t *settings)
 {
@@ -166,31 +156,11 @@ static obs_properties_t *browser_source_get_properties(void *data)
 	DStr path;
 
 	obs_properties_set_flags(props, OBS_PROPERTIES_DEFER_UPDATE);
-	obs_property_t *prop = obs_properties_add_bool(
-		props, "is_local_file", obs_module_text("LocalFile"));
 
-	if (bs && !bs->url.empty()) {
-		const char *slash;
-
-		dstr_copy(path, bs->url.c_str());
-		dstr_replace(path, "\\", "/");
-		slash = strrchr(path->array, '/');
-		if (slash)
-			dstr_resize(path, slash - path->array + 1);
-	}
-
-	obs_property_set_modified_callback(prop, is_local_file_modified);
-	obs_properties_add_path(props, "local_file",
-				obs_module_text("LocalFile"), OBS_PATH_FILE,
-				"*.*", path->array);
-	obs_properties_add_text(props, "url", obs_module_text("URL"),
-				OBS_TEXT_DEFAULT);
-
-	obs_properties_add_editable_list(
-		props, "playlist", "List of files or directories to play",
-		OBS_EDITABLE_LIST_TYPE_FILES,
-		"Image files (*.bmp *.tga *.png *.jpeg *.jpg *.gif *.webp)",
-		path);
+	obs_properties_add_editable_list(props, "playlist",
+					 "List of files or directories to play",
+					 OBS_EDITABLE_LIST_TYPE_FILES_AND_URLS,
+					 getFilesFilter(), path);
 
 	obs_properties_add_int(props, "width", obs_module_text("Width"), 1,
 			       4096, 1);
@@ -215,7 +185,7 @@ static obs_properties_t *browser_source_get_properties(void *data)
 	obs_property_text_set_monospace(p, true);
 
 	obs_property_t *pjs = obs_properties_add_text(props, "js", "Custom JS",
-						    OBS_TEXT_MULTILINE);
+						      OBS_TEXT_MULTILINE);
 	obs_property_text_set_monospace(pjs, true);
 
 	obs_properties_add_bool(props, "shutdown",
@@ -544,9 +514,23 @@ void RegisterBrowserSource()
 		static_cast<BrowserSource *>(data)->SetActive(false);
 	};
 
-	/* Media controls*/
-	info.media_next = [](void *data) { blog(LOG_INFO, "XXXXXXXXXXX"); };
+	/* Media controls */
+	info.media_next = [](void *data) {
+		BrowserSource *source = static_cast<BrowserSource *>(data);
+		source->media_index =
+			(++source->media_index) % source->media_files.size();
+		source->Update();
+		blog(LOG_INFO, "Next media: %s", source->GetUrl().c_str());
+	};
+	info.media_previous = [](void *data) {
+		BrowserSource *source = static_cast<BrowserSource *>(data);
+		if (source->media_index > 0) {
+			source->media_index -= 1;
+		}
 
+		source->Update();
+		blog(LOG_INFO, "Prev media: %s", source->GetUrl().c_str());
+	};
 	obs_register_source(&info);
 }
 
@@ -804,4 +788,33 @@ void obs_module_unload(void)
 #endif
 
 	os_event_destroy(cef_started_event);
+}
+
+static DStr getFilesFilter()
+{
+	DStr filter;
+	DStr exts;
+
+	dstr_cat(filter, "Media Files (");
+	dstr_copy(exts, EXTENSIONS_MEDIA);
+	dstr_replace(exts, ";", " ");
+	dstr_cat_dstr(filter, exts);
+
+	dstr_cat(filter, ");;Video Files (");
+	dstr_copy(exts, EXTENSIONS_VIDEO);
+	dstr_replace(exts, ";", " ");
+	dstr_cat_dstr(filter, exts);
+
+	dstr_cat(filter, ");;Audio Files (");
+	dstr_copy(exts, EXTENSIONS_AUDIO);
+	dstr_replace(exts, ";", " ");
+	dstr_cat_dstr(filter, exts);
+
+	dstr_cat(filter, ");;Complex Files (");
+	dstr_copy(exts, EXTENSIONS_COMPLEX);
+	dstr_replace(exts, ";", " ");
+	dstr_cat_dstr(filter, exts);
+	dstr_cat(filter, ")");
+
+	return filter;
 }

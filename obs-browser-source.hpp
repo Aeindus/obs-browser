@@ -27,6 +27,7 @@
 #include <functional>
 #include <string>
 #include <mutex>
+#include <vector>
 
 #if CHROME_VERSION_BUILD < 4103
 #include <obs.hpp>
@@ -41,8 +42,40 @@ struct AudioStream {
 };
 #endif
 
+#define EXTENSIONS_AUDIO \
+	"*.aac;"         \
+	"*.flac;"        \
+	"*.mp3;"         \
+	"*.ogg;"         \
+	"*.oga;"         \
+	"*.opus;"        \
+	"*.wav"
+#define EXTENSIONS_VIDEO \
+	"*.av1;"         \
+	"*.ogv;"         \
+	"*.mp4;"         \
+	"*.webm;"        \
+	"*.mkv"
+#define EXTENSIONS_IMAGE \
+	"*.bmp;"         \
+	"*.gif;"         \
+	"*.jpg;"         \
+	"*.jpeg;"        \
+	"*.png;"         \
+	"*.webp"
+#define EXTENSIONS_COMPLEX \
+	"*.pdf;"           \
+	"*.txt;"           \
+	"*.htm;"           \
+	"*.html"
+#define EXTENSIONS_MEDIA                                           \
+	EXTENSIONS_VIDEO ";" EXTENSIONS_AUDIO ";" EXTENSIONS_IMAGE \
+			 ";" EXTENSIONS_COMPLEX
+
 struct media_file_data {
-	char *path;
+	bool is_file;
+	std::string url;
+	std::string filepath;
 };
 
 enum class ControlLevel : int {
@@ -68,7 +101,6 @@ struct BrowserSource {
 	std::recursive_mutex lockBrowser;
 	CefRefPtr<CefBrowser> cefBrowser;
 
-	std::string url;
 	std::string css;
 	std::string js;
 	gs_texture_t *texture = nullptr;
@@ -77,7 +109,8 @@ struct BrowserSource {
 	uint32_t last_cy = 0;
 	gs_color_format last_format = GS_UNKNOWN;
 
-	DARRAY(media_file_data) files;
+	int media_index = 0;
+	std::vector<media_file_data> media_files;
 
 #ifdef ENABLE_BROWSER_SHARED_TEXTURE
 #ifdef _WIN32
@@ -94,7 +127,6 @@ struct BrowserSource {
 	double canvas_fps = 0;
 	bool restart = false;
 	bool shutdown_on_invisible = false;
-	bool is_local = false;
 	bool first_update = true;
 	bool reroute_audio = true;
 	std::atomic<bool> destroying = false;
@@ -166,4 +198,7 @@ struct BrowserSource {
 
 	void SetBrowser(CefRefPtr<CefBrowser> b);
 	CefRefPtr<CefBrowser> GetBrowser();
+
+	std::string GetUrl();
+	bool IsLocal();
 };
