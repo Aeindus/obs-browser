@@ -54,8 +54,7 @@ struct AudioStream {
 	"*.av1;"         \
 	"*.ogv;"         \
 	"*.mp4;"         \
-	"*.webm;"        \
-	"*.mkv"
+	"*.webm"
 #define EXTENSIONS_IMAGE \
 	"*.bmp;"         \
 	"*.gif;"         \
@@ -200,5 +199,8 @@ struct BrowserSource {
 	CefRefPtr<CefBrowser> GetBrowser();
 
 	std::string GetUrl();
+
+	// Get nice title for humans
+	std::string GetTitleForUrl();
 	bool IsLocal();
 };

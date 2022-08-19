@@ -487,6 +487,21 @@ std::string BrowserSource::GetUrl()
 	return media_files[media_index].url;
 }
 
+std::string BrowserSource::GetTitleForUrl()
+{
+	media_file_data data;
+
+	if (media_files.empty())
+		return "";
+	data = media_files[media_index];
+
+	size_t last_slash = data.filepath.rfind("/");
+	if (last_slash != std::string::npos) {
+		return data.filepath.substr(last_slash + 1);
+	}
+	return data.filepath;
+}
+
 bool BrowserSource::IsLocal()
 {
 	if (media_files.empty())
@@ -805,6 +820,10 @@ static void add_file(std::vector<media_file_data> &list, std::string path,
 	bool is_file = from_folder ? true
 				   : (path.find("://") == std::string::npos);
 
+	// Standardize slashes
+	while (path.find('\\') != std::string::npos)
+		path.replace(path.find("\\"), 1, "/");
+
 	// Save original value
 	data.filepath = path;
 
@@ -820,9 +839,6 @@ static void add_file(std::vector<media_file_data> &list, std::string path,
 		    colon < slash)
 			path.replace(colon, 3, ":");
 #endif
-
-		while (path.find("%5C") != std::string::npos)
-			path.replace(path.find("%5C"), 3, "/");
 
 		while (path.find("%2F") != std::string::npos)
 			path.replace(path.find("%2F"), 3, "/");
