@@ -495,9 +495,9 @@ std::string BrowserSource::GetTitleForUrl()
 		return "";
 	data = media_files[media_index];
 
-	size_t last_slash = data.filepath.rfind("/");
-	if (last_slash != std::string::npos) {
-		return data.filepath.substr(last_slash + 1);
+	const char *filename = os_get_path_filename(data.filepath.c_str());
+	if (filename!=NULL) {
+		return filename;
 	}
 	return data.filepath;
 }
