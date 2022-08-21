@@ -117,7 +117,8 @@ background-color: rgba(0, 0, 0, 0); \
 margin: 0px auto; \
 overflow: hidden; \
 }\n\
-img {min-width:1920px}";
+img {min-width:1920px;}\n\
+video {min-height:100%;}";
 
 static void browser_source_get_defaults(obs_data_t *settings)
 {
