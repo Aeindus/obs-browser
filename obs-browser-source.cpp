@@ -484,6 +484,7 @@ std::string BrowserSource::GetUrl()
 {
 	if (media_files.empty())
 		return "";
+
 	return media_files[media_index].url;
 }
 
@@ -496,7 +497,7 @@ std::string BrowserSource::GetTitleForUrl()
 	data = media_files[media_index];
 
 	const char *filename = os_get_path_filename(data.filepath.c_str());
-	if (filename!=NULL) {
+	if (filename != NULL) {
 		return filename;
 	}
 	return data.filepath;
@@ -817,6 +818,7 @@ static void add_file(std::vector<media_file_data> &list, std::string path,
 		     bool from_folder)
 {
 	media_file_data data;
+	std::string encoded_path = path;
 	bool is_file = from_folder ? true
 				   : (path.find("://") == std::string::npos);
 
@@ -824,50 +826,56 @@ static void add_file(std::vector<media_file_data> &list, std::string path,
 	while (path.find('\\') != std::string::npos)
 		path.replace(path.find("\\"), 1, "/");
 
-	// Save original value
-	data.filepath = path;
+	encoded_path = path;
 
 	// If path is a file then encode
-	if (is_file && !path.empty()) {
-		path = CefURIEncode(path, false);
+	if (is_file && !encoded_path.empty()) {
+		encoded_path = CefURIEncode(encoded_path, false);
 
 #ifdef _WIN32
-		size_t slash = path.find("%2F");
-		size_t colon = path.find("%3A");
+		size_t slash = encoded_path.find("%2F");
+		size_t colon = encoded_path.find("%3A");
 
 		if (slash != std::string::npos && colon != std::string::npos &&
 		    colon < slash)
-			path.replace(colon, 3, ":");
+			encoded_path.replace(colon, 3, ":");
 #endif
 
-		while (path.find("%2F") != std::string::npos)
-			path.replace(path.find("%2F"), 3, "/");
+		while (encoded_path.find("%2F") != std::string::npos)
+			encoded_path.replace(encoded_path.find("%2F"), 3, "/");
 
 #if !ENABLE_LOCAL_FILE_URL_SCHEME
 		/* http://absolute/ based mapping for older CEF */
-		path = "http://absolute/" + path;
+		encoded_path = "http://absolute/" + encoded_path;
 #elif defined(_WIN32)
 		/* Widows-style local file URL:
 			 * file:///C:/file/path.webm */
-		path = "file:///" + path;
+		encoded_path = "file:///" + encoded_path;
 #else
 		/* UNIX-style local file URL:
 			 * file:///home/user/file.webm */
-		path = "file://" + path;
+		encoded_path = "file://" + encoded_path;
 #endif
 	}
 
 #if ENABLE_LOCAL_FILE_URL_SCHEME
-	if (astrcmpi_n(path.c_str(), "http://absolute/", 16) == 0) {
+	if (astrcmpi_n(encoded_path.c_str(), "http://absolute/", 16) == 0) {
 		/* Replace http://absolute/ URLs with file://
 			 * URLs if file:// URLs are enabled */
-		path = "file:///" + path.substr(16);
+		encoded_path = "file:///" + encoded_path.substr(16);
 		is_file = true;
 	}
 #endif
 
 	data.is_file = is_file;
-	data.url = path;
+	data.filepath = path;
+	data.url = encoded_path;
+
+	// Add pdf special parameters
+	//https://stackoverflow.com/questions/20562543/zoom-to-fit-pdf-embedded-in-html
+	if (astrcmpi(os_get_path_extension(path.c_str()), ".pdf") == 0) {
+		data.url += "#view=FitH";
+	}
 
 	list.push_back(data);
 }
