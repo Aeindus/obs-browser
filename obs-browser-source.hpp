@@ -28,6 +28,7 @@
 #include <string>
 #include <mutex>
 #include <vector>
+#include <optional>
 
 #if CHROME_VERSION_BUILD < 4103
 #include <obs.hpp>
@@ -67,14 +68,23 @@ struct AudioStream {
 	"*.txt;"           \
 	"*.htm;"           \
 	"*.html"
-#define EXTENSIONS_MEDIA                                           \
+#define EXTENSIONS_ALL                                             \
 	EXTENSIONS_VIDEO ";" EXTENSIONS_AUDIO ";" EXTENSIONS_IMAGE \
 			 ";" EXTENSIONS_COMPLEX
 
 struct media_file_data {
 	bool is_file;
+	bool is_video;
 	std::string url;
 	std::string filepath;
+};
+
+enum class ExtensionType {
+	Audio = 0,
+	Video = 1,
+	Image = 2,
+	Complex = 3,
+	All = 4
 };
 
 enum class ControlLevel : int {
@@ -198,9 +208,12 @@ struct BrowserSource {
 	void SetBrowser(CefRefPtr<CefBrowser> b);
 	CefRefPtr<CefBrowser> GetBrowser();
 
+	std::optional<media_file_data> GetMediaData();
 	std::string GetUrl();
-
 	// Get nice title for humans
 	std::string GetTitleForUrl();
 	bool IsLocal();
 };
+
+void DispatchJSEvent(std::string eventName, std::string jsonString,
+		     BrowserSource *browser);

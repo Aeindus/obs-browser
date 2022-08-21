@@ -30,6 +30,7 @@
 #include <thread>
 #include <mutex>
 #include <vector>
+#include <optional>
 
 #ifdef __linux__
 #include "linux-keyboard-helpers.hpp"
@@ -46,6 +47,7 @@ using namespace json11;
 static void add_file(std::vector<media_file_data> &list, std::string path,
 		     bool from_folder = false);
 static bool valid_extension(const char *ext);
+static bool match_extension(const char *ext, const char *list);
 static std::string to_lower(std::string str);
 
 extern bool QueueCEFTask(std::function<void()> task);
@@ -480,34 +482,45 @@ CefRefPtr<CefBrowser> BrowserSource::GetBrowser()
 	return cefBrowser;
 }
 
-std::string BrowserSource::GetUrl()
+std::optional<media_file_data> BrowserSource::GetMediaData()
 {
 	if (media_files.empty())
+		return {};
+	return media_files[media_index];
+}
+
+std::string BrowserSource::GetUrl()
+{
+	auto media_data = GetMediaData();
+	if (!media_data)
 		return "";
 
-	return media_files[media_index].url;
+	return media_data->url;
 }
 
 std::string BrowserSource::GetTitleForUrl()
 {
 	media_file_data data;
+	auto media_data = GetMediaData();
 
-	if (media_files.empty())
+	if (!media_data)
 		return "";
-	data = media_files[media_index];
 
-	const char *filename = os_get_path_filename(data.filepath.c_str());
+	const char *filename =
+		os_get_path_filename(media_data->filepath.c_str());
 	if (filename != NULL) {
 		return filename;
 	}
-	return data.filepath;
+	return media_data->filepath;
 }
 
 bool BrowserSource::IsLocal()
 {
-	if (media_files.empty())
+	auto media_data = GetMediaData();
+
+	if (!media_data)
 		return false;
-	return media_files[media_index].is_file;
+	return media_data->is_file;
 }
 
 #ifdef ENABLE_BROWSER_SHARED_TEXTURE
@@ -868,6 +881,7 @@ static void add_file(std::vector<media_file_data> &list, std::string path,
 #endif
 
 	data.is_file = is_file;
+	data.is_video = false;
 	data.filepath = path;
 	data.url = encoded_path;
 
@@ -877,10 +891,21 @@ static void add_file(std::vector<media_file_data> &list, std::string path,
 		data.url += "#view=FitH";
 	}
 
+	// Determine if the file is a possible video
+	if (match_extension(os_get_path_extension(path.c_str()),
+			    EXTENSIONS_VIDEO)) {
+		data.is_video = true;
+	}
+
 	list.push_back(data);
 }
 
 static bool valid_extension(const char *ext)
+{
+	return match_extension(ext, EXTENSIONS_ALL);
+}
+
+static bool match_extension(const char *ext, const char *list)
 {
 	dstr test = {0};
 	bool valid = false;
@@ -890,7 +915,7 @@ static bool valid_extension(const char *ext)
 	if (!ext || !*ext)
 		return false;
 
-	b = &EXTENSIONS_MEDIA[1];
+	b = &list[1];
 	e = strchr(b, ';');
 
 	for (;;) {

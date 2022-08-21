@@ -27,6 +27,7 @@
 #include <sstream>
 #include <thread>
 #include <mutex>
+#include <string>
 
 #include "obs-browser-source.hpp"
 #include "browser-scheme.hpp"
@@ -120,6 +121,13 @@ overflow: hidden; \
 img {min-width:1920px;}\n\
 video {min-height:100%;}";
 
+static const char *default_js = "\
+window.addEventListener('obsMediaPlayPause', function(event) {\n\
+	var video=document.getElementsByTagName('video')[0];\n\
+	if(video.paused) video.play();\n\
+	else video.pause();\n\
+});";
+
 static void browser_source_get_defaults(obs_data_t *settings)
 {
 	obs_data_set_default_string(settings, "url",
@@ -137,6 +145,7 @@ static void browser_source_get_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, "webpage_control_level",
 				 (int)DEFAULT_CONTROL_LEVEL);
 	obs_data_set_default_string(settings, "css", default_css);
+	obs_data_set_default_string(settings, "js", default_js);
 	obs_data_set_default_bool(settings, "reroute_audio", false);
 }
 
@@ -185,9 +194,9 @@ static obs_properties_t *browser_source_get_properties(void *data)
 		props, "css", obs_module_text("CSS"), OBS_TEXT_MULTILINE);
 	obs_property_text_set_monospace(p, true);
 
-	obs_property_t *pjs = obs_properties_add_text(props, "js", "Custom JS",
+	obs_property_t *tjs = obs_properties_add_text(props, "js", "Custom JS",
 						      OBS_TEXT_MULTILINE);
-	obs_property_text_set_monospace(pjs, true);
+	obs_property_text_set_monospace(tjs, true);
 
 	obs_properties_add_bool(props, "shutdown",
 				obs_module_text("ShutdownSourceNotVisible"));
@@ -516,6 +525,17 @@ void RegisterBrowserSource()
 	};
 
 	/* Media controls */
+	info.media_get_state =
+		[](void *data) {
+			BrowserSource *source =
+				static_cast<BrowserSource *>(data);
+			auto media_data = source->GetMediaData();
+
+			if (!media_data || !media_data->is_video)
+				return obs_media_state::OBS_MEDIA_STATE_ERROR;
+
+			return obs_media_state::OBS_MEDIA_STATE_PLAYING;
+		},
 	info.media_next = [](void *data) {
 		BrowserSource *source = static_cast<BrowserSource *>(data);
 		source->media_index =
@@ -532,6 +552,13 @@ void RegisterBrowserSource()
 		source->Update();
 		blog(LOG_INFO, "Prev media: %s", source->GetUrl().c_str());
 	};
+	info.media_play_pause =
+		[](void *data, bool pause) {
+			BrowserSource *source =
+				static_cast<BrowserSource *>(data);
+
+			DispatchJSEvent("obsMediaPlayPause", "", source);
+		},
 	info.media_get_title = [](void *data, char *out_title) {
 		std::string title =
 			static_cast<BrowserSource *>(data)->GetTitleForUrl();
@@ -803,7 +830,7 @@ static DStr getFilesFilter()
 	DStr exts;
 
 	dstr_cat(filter, "Media Files (");
-	dstr_copy(exts, EXTENSIONS_MEDIA);
+	dstr_copy(exts, EXTENSIONS_ALL);
 	dstr_replace(exts, ";", " ");
 	dstr_cat_dstr(filter, exts);
 
