@@ -532,7 +532,6 @@ void RegisterBrowserSource()
 		blog(LOG_INFO, "Prev media: %s", source->GetUrl().c_str());
 	};
 	info.media_get_title = [](void *data, char *out_title) {
-		blog(LOG_INFO, "Got the title");
 		std::string title =
 			static_cast<BrowserSource *>(data)->GetTitleForUrl();
 		strcpy(out_title, title.c_str());
