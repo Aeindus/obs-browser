@@ -76,7 +76,7 @@ struct media_file_data {
 	bool is_file;
 	bool is_video;
 	std::string url;
-	std::string filepath;
+	std::string resourcepath;
 };
 
 enum class ExtensionType {
@@ -135,6 +135,7 @@ struct BrowserSource {
 	int fps = 0;
 	double canvas_fps = 0;
 	bool restart = false;
+	bool pdf_toolbar = false;
 	bool shutdown_on_invisible = false;
 	bool first_update = true;
 	bool reroute_audio = true;
@@ -210,7 +211,6 @@ struct BrowserSource {
 
 	std::optional<media_file_data> GetMediaData();
 	std::string GetUrl();
-	// Get nice title for humans
 	std::string GetTitleForUrl();
 	bool IsLocal();
 };

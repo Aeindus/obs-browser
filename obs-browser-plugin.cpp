@@ -140,6 +140,7 @@ static void browser_source_get_defaults(obs_data_t *settings)
 #else
 	obs_data_set_default_bool(settings, "fps_custom", true);
 #endif
+	obs_data_set_default_bool(settings, "pdf_toolbar", false);
 	obs_data_set_default_bool(settings, "shutdown", false);
 	obs_data_set_default_bool(settings, "restart_when_active", false);
 	obs_data_set_default_int(settings, "webpage_control_level",
@@ -198,6 +199,7 @@ static obs_properties_t *browser_source_get_properties(void *data)
 						      OBS_TEXT_MULTILINE);
 	obs_property_text_set_monospace(tjs, true);
 
+	obs_properties_add_bool(props, "pdf_toolbar", "Show pdf toolbar");
 	obs_properties_add_bool(props, "shutdown",
 				obs_module_text("ShutdownSourceNotVisible"));
 	obs_properties_add_bool(props, "restart_when_active",
@@ -243,6 +245,7 @@ static obs_properties_t *browser_source_get_properties(void *data)
 static void missing_file_callback(void *src, const char *new_path, void *data)
 {
 	BrowserSource *bs = static_cast<BrowserSource *>(src);
+	std::string old_resourcepath = (char *)data;
 
 	if (bs) {
 		obs_source_t *source = bs->source;
@@ -260,9 +263,10 @@ static void missing_file_callback(void *src, const char *new_path, void *data)
 			if (!is_file)
 				continue;
 
-			if (strcmp(path.c_str(), (char *)data) == 0) {
+			if (strcmp(path.c_str(), old_resourcepath.c_str()) ==
+			    0) {
 				obs_data_set_string(item, "value", new_path);
-				return;
+				break;
 			}
 		}
 	}

@@ -481,47 +481,6 @@ CefRefPtr<CefBrowser> BrowserSource::GetBrowser()
 	return cefBrowser;
 }
 
-std::optional<media_file_data> BrowserSource::GetMediaData()
-{
-	if (media_files.empty())
-		return {};
-	return media_files[media_index];
-}
-
-std::string BrowserSource::GetUrl()
-{
-	auto media_data = GetMediaData();
-	if (!media_data)
-		return "";
-
-	return media_data->url;
-}
-
-std::string BrowserSource::GetTitleForUrl()
-{
-	media_file_data data;
-	auto media_data = GetMediaData();
-
-	if (!media_data)
-		return "";
-
-	const char *filename =
-		os_get_path_filename(media_data->filepath.c_str());
-	if (filename != NULL) {
-		return filename;
-	}
-	return media_data->filepath;
-}
-
-bool BrowserSource::IsLocal()
-{
-	auto media_data = GetMediaData();
-
-	if (!media_data)
-		return false;
-	return media_data->is_file;
-}
-
 #ifdef ENABLE_BROWSER_SHARED_TEXTURE
 #ifdef BROWSER_EXTERNAL_BEGIN_FRAME_ENABLED
 inline void BrowserSource::SignalBeginFrame()
@@ -548,6 +507,7 @@ void BrowserSource::Update(obs_data_t *settings)
 		int n_height;
 		bool n_fps_custom;
 		int n_fps;
+		bool n_pdf_toolbar;
 		bool n_shutdown;
 		bool n_restart;
 		bool n_reroute;
@@ -555,12 +515,14 @@ void BrowserSource::Update(obs_data_t *settings)
 		std::string n_url;
 		std::string n_css;
 		std::string n_js;
-		std::string new_url;
-		std::string last_url;
+		std::string new_resourcepath;
+		std::string last_resourcepath;
 
 		// -------------------------------------------
 		// Add files, folders and urls to list
-		last_url = GetUrl();
+		last_resourcepath =
+			GetMediaData() ? GetMediaData()->resourcepath : "";
+
 		media_files.clear();
 
 		playlist_array = obs_data_get_array(settings, "playlist");
@@ -600,9 +562,9 @@ void BrowserSource::Update(obs_data_t *settings)
 					folder_files.begin(),
 					folder_files.end(),
 					[](const auto &a, const auto &b) {
-						return to_lower(a.filepath)
+						return to_lower(a.resourcepath)
 							       .compare(to_lower(
-								       b.filepath)) <=
+								       b.resourcepath)) <=
 						       0;
 					});
 				media_files.insert(media_files.end(),
@@ -619,11 +581,11 @@ void BrowserSource::Update(obs_data_t *settings)
 		obs_data_array_release(playlist_array);
 
 		// See if the same file can be found again and go to its index
-		auto search_result =
-			std::find_if(media_files.begin(), media_files.end(),
-				     [&last_url](const auto &el) {
-					     return el.url == last_url;
-				     });
+		auto search_result = std::find_if(
+			media_files.begin(), media_files.end(),
+			[&last_resourcepath](const auto &el) {
+				return el.resourcepath == last_resourcepath;
+			});
 		if (search_result == media_files.end()) {
 			media_index = 0; // Reset to beginning
 		} else {
@@ -635,6 +597,7 @@ void BrowserSource::Update(obs_data_t *settings)
 		n_height = (int)obs_data_get_int(settings, "height");
 		n_fps_custom = obs_data_get_bool(settings, "fps_custom");
 		n_fps = (int)obs_data_get_int(settings, "fps");
+		n_pdf_toolbar = obs_data_get_bool(settings, "pdf_toolbar");
 		n_shutdown = obs_data_get_bool(settings, "shutdown");
 		n_restart = obs_data_get_bool(settings, "restart_when_active");
 		n_css = obs_data_get_string(settings, "css");
@@ -642,14 +605,15 @@ void BrowserSource::Update(obs_data_t *settings)
 		n_reroute = obs_data_get_bool(settings, "reroute_audio");
 		n_webpage_control_level = static_cast<ControlLevel>(
 			obs_data_get_int(settings, "webpage_control_level"));
-		new_url = GetUrl();
+		new_resourcepath = GetMediaData() ? GetMediaData()->resourcepath
+						  : "";
 
-		// Here add check to see if we just added new files and that
-		// no reset is necesarily.
 		if (n_fps_custom == fps_custom && n_fps == fps &&
+		    n_pdf_toolbar == pdf_toolbar &&
 		    n_shutdown == shutdown_on_invisible &&
-		    last_url == new_url && n_restart == restart &&
-		    n_css == css && n_js == js && n_reroute == reroute_audio &&
+		    last_resourcepath == new_resourcepath &&
+		    n_restart == restart && n_css == css && n_js == js &&
+		    n_reroute == reroute_audio &&
 		    n_webpage_control_level == webpage_control_level) {
 
 			if (n_width == width && n_height == height)
@@ -677,6 +641,7 @@ void BrowserSource::Update(obs_data_t *settings)
 		height = n_height;
 		fps = n_fps;
 		fps_custom = n_fps_custom;
+		pdf_toolbar = n_pdf_toolbar;
 		shutdown_on_invisible = n_shutdown;
 		reroute_audio = n_reroute;
 		webpage_control_level = n_webpage_control_level;
@@ -785,6 +750,57 @@ void BrowserSource::Render()
 #endif
 }
 
+std::optional<media_file_data> BrowserSource::GetMediaData()
+{
+	if (media_files.empty())
+		return {};
+	return media_files[media_index];
+}
+
+std::string BrowserSource::GetUrl()
+{
+	auto media_data = GetMediaData();
+	if (!media_data)
+		return "";
+
+	// Add pdf special parameters
+	// This parameters do not identify the file but only alter the behaviour of the viewer
+	// beased on current settings
+	//https://stackoverflow.com/questions/20562543/zoom-to-fit-pdf-embedded-in-html
+	if (astrcmpi(os_get_path_extension(media_data->resourcepath.c_str()),
+		     ".pdf") == 0 &&
+	    !pdf_toolbar) {
+		return media_data->url + "&toolbar=0";
+	}
+
+	return media_data->url;
+}
+
+std::string BrowserSource::GetTitleForUrl()
+{
+	media_file_data data;
+	auto media_data = GetMediaData();
+
+	if (!media_data)
+		return "";
+
+	const char *filename =
+		os_get_path_filename(media_data->resourcepath.c_str());
+	if (filename != NULL) {
+		return filename;
+	}
+	return media_data->resourcepath;
+}
+
+bool BrowserSource::IsLocal()
+{
+	auto media_data = GetMediaData();
+
+	if (!media_data)
+		return false;
+	return media_data->is_file;
+}
+
 static void ExecuteOnBrowser(BrowserFunc func, BrowserSource *bs)
 {
 	lock_guard<mutex> lock(browser_list_mutex);
@@ -825,6 +841,7 @@ void DispatchJSEvent(std::string eventName, std::string jsonString,
 	else
 		ExecuteOnBrowser(jsEvent, browser);
 }
+
 
 static void add_file(std::vector<media_file_data> &list, std::string path)
 {
@@ -879,7 +896,7 @@ static void add_file(std::vector<media_file_data> &list, std::string path)
 
 	data.is_file = is_file;
 	data.is_video = false;
-	data.filepath = path;
+	data.resourcepath = path;
 	data.url = encoded_path;
 
 	// Add pdf special parameters
