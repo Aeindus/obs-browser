@@ -247,11 +247,25 @@ static void missing_file_callback(void *src, const char *new_path, void *data)
 	if (bs) {
 		obs_source_t *source = bs->source;
 		OBSDataAutoRelease settings = obs_source_get_settings(source);
-		obs_data_set_string(settings, "local_file", new_path);
-		obs_source_update(source, settings);
-	}
+		OBSDataArrayAutoRelease playlist_array =
+			obs_data_get_array(settings, "playlist");
+		size_t playlist_count = obs_data_array_count(playlist_array);
 
-	UNUSED_PARAMETER(data);
+		for (size_t i = 0; i < playlist_count; i++) {
+			OBSDataAutoRelease item =
+				obs_data_array_item(playlist_array, i);
+			std::string path = obs_data_get_string(item, "value");
+			bool is_file = path.find("://") == std::string::npos;
+
+			if (!is_file)
+				continue;
+
+			if (strcmp(path.c_str(), (char *)data) == 0) {
+				obs_data_set_string(item, "value", new_path);
+				return;
+			}
+		}
+	}
 }
 
 static obs_missing_files_t *browser_source_missingfiles(void *data)
@@ -262,17 +276,36 @@ static obs_missing_files_t *browser_source_missingfiles(void *data)
 	if (bs) {
 		obs_source_t *source = bs->source;
 		OBSDataAutoRelease settings = obs_source_get_settings(source);
+		OBSDataArrayAutoRelease playlist_array =
+			obs_data_get_array(settings, "playlist");
+		size_t playlist_count = obs_data_array_count(playlist_array);
 
-		bool enabled = obs_data_get_bool(settings, "is_local_file");
-		const char *path = obs_data_get_string(settings, "local_file");
+		for (size_t i = 0; i < playlist_count; i++) {
+			OBSDataAutoRelease item =
+				obs_data_array_item(playlist_array, i);
+			std::string path = obs_data_get_string(item, "value");
+			os_dir_t *dir;
+			bool is_file = path.find("://") == std::string::npos;
 
-		if (enabled && strcmp(path, "") != 0) {
-			if (!os_file_exists(path)) {
+			if (!is_file || strcmp(path.c_str(), "") == 0)
+				continue;
+
+			dir = os_opendir(path.c_str());
+
+			if (dir) {
+				os_closedir(dir);
+				continue;
+			}
+
+			if (!os_file_exists(path.c_str())) {
 				obs_missing_file_t *file =
 					obs_missing_file_create(
-						path, missing_file_callback,
+						path.c_str(),
+						missing_file_callback,
 						OBS_MISSING_FILE_SOURCE,
-						bs->source, NULL);
+						bs->source,
+						(void *)obs_data_get_string(
+							item, "value"));
 
 				obs_missing_files_add_file(files, file);
 			}

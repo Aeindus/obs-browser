@@ -44,8 +44,7 @@
 using namespace std;
 using namespace json11;
 
-static void add_file(std::vector<media_file_data> &list, std::string path,
-		     bool from_folder = false);
+static void add_file(std::vector<media_file_data> &list, std::string path);
 static bool valid_extension(const char *ext);
 static bool match_extension(const char *ext, const char *list);
 static std::string to_lower(std::string str);
@@ -570,7 +569,7 @@ void BrowserSource::Update(obs_data_t *settings)
 		for (size_t i = 0; i < playlist_count; i++) {
 			obs_data_t *item =
 				obs_data_array_item(playlist_array, i);
-			string path = obs_data_get_string(item, "value");
+			std::string path = obs_data_get_string(item, "value");
 			os_dir_t *dir = os_opendir(path.c_str());
 
 			if (dir) {
@@ -593,7 +592,7 @@ void BrowserSource::Update(obs_data_t *settings)
 
 					std::string filepath = path + "/";
 					filepath += ent->d_name;
-					add_file(folder_files, filepath, true);
+					add_file(folder_files, filepath);
 				}
 
 				// Sort files from this folder and append to result
@@ -827,13 +826,11 @@ void DispatchJSEvent(std::string eventName, std::string jsonString,
 		ExecuteOnBrowser(jsEvent, browser);
 }
 
-static void add_file(std::vector<media_file_data> &list, std::string path,
-		     bool from_folder)
+static void add_file(std::vector<media_file_data> &list, std::string path)
 {
 	media_file_data data;
 	std::string encoded_path = path;
-	bool is_file = from_folder ? true
-				   : (path.find("://") == std::string::npos);
+	bool is_file = path.find("://") == std::string::npos;
 
 	// Standardize slashes
 	while (path.find('\\') != std::string::npos)
