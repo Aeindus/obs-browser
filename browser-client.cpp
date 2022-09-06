@@ -23,12 +23,15 @@
 #include <obs-frontend-api.h>
 #include <obs.hpp>
 #include <util/platform.h>
+#include <util/util.hpp>
 #include <QApplication>
 #include <QThread>
 #include <QToolTip>
 #if defined(__APPLE__) && CHROME_VERSION_BUILD > 4430
 #include <IOSurface/IOSurface.h>
 #endif
+#include <fstream>
+#include <sstream>
 
 using namespace json11;
 
@@ -663,6 +666,24 @@ void BrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
 		return;
 	}
 
+	if (frame->IsMain()) {
+		// Load default scripts
+		BPtr<char> jquery_file_path = obs_module_file("jquery.js");
+		BPtr<char> jquery_file_data =
+			os_quick_read_utf8_file(jquery_file_path);
+		if (jquery_file_data) {
+			CefString file_cef(jquery_file_data);
+			frame->ExecuteJavaScript(file_cef, "", 0);
+		}
+
+		BPtr<char> default_file_path = obs_module_file("default.js");
+		BPtr<char> default_file_data =
+			os_quick_read_utf8_file(default_file_path);
+		if (default_file_data) {
+			CefString file_cef(default_file_data);
+			frame->ExecuteJavaScript(file_cef, "", 0);
+		}
+	}
 	if (frame->IsMain() && bs->css.length()) {
 		std::string uriEncodedCSS =
 			CefURIEncode(bs->css, false).ToString();
@@ -705,6 +726,12 @@ bool BrowserClient::OnConsoleMessage(CefRefPtr<CefBrowser>,
 	case LOGSEVERITY_FATAL:
 		errorLevel = LOG_ERROR;
 		break;
+	case LOGSEVERITY_INFO:
+		if (message.ToString().find("LOG_INFO") == 0) {
+			break;
+		}
+		// Fall through
+
 	default:
 		return false;
 	}

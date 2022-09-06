@@ -842,7 +842,6 @@ void DispatchJSEvent(std::string eventName, std::string jsonString,
 		ExecuteOnBrowser(jsEvent, browser);
 }
 
-
 static void add_file(std::vector<media_file_data> &list, std::string path)
 {
 	media_file_data data;
