@@ -117,16 +117,9 @@ body { \
 background-color: rgba(0, 0, 0, 0); \
 margin: 0px auto; \
 }\n\
-img {min-width:1920px;}\n\
-video {min-height:100%;}";
+video { min-height:100%; }";
 
-static const char *default_js = "\
-window.addEventListener('obsMediaPlayPause', function(event) {\n\
-	var videos = document.getElementsByTagName('video');\n\
-	if (videos.length == 0) return;\n\
-	if (videos[0].paused) videos[0].play();\n\
-	else videos[0].pause();\n\
-});";
+static const char *default_js = "";
 
 static void browser_source_get_defaults(obs_data_t *settings)
 {
