@@ -784,11 +784,14 @@ std::string BrowserSource::GetTitleForUrl()
 	if (!media_data)
 		return "";
 
-	const char *filename =
-		os_get_path_filename(media_data->resourcepath.c_str());
-	if (filename != NULL) {
-		return filename;
+	if (media_data->is_file) {
+		const char *filename =
+			os_get_path_filename(media_data->resourcepath.c_str());
+		if (filename != NULL) {
+			return filename;
+		}
 	}
+
 	return media_data->resourcepath;
 }
 

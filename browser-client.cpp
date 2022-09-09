@@ -666,6 +666,13 @@ void BrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
 		return;
 	}
 
+	// Do not load css and js on websites but only
+	// for local files
+	auto media=bs->GetMediaData();
+
+	if (media && !media->is_file)
+		return;
+	
 	if (frame->IsMain()) {
 		// Load default scripts
 		BPtr<char> jquery_file_path = obs_module_file("jquery.js");
