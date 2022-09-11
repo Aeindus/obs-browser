@@ -10,7 +10,7 @@ $(document).ready(function () {
     }
 
     $("img").on("click", function (e) {
-        // An issue here which is not solved buy "painted" over is
+        // An issue here which is not solved but "painted" over is
         // the fact that the cef browser automatically zooms the image on click.
         // I did not find a way to prevent this behaviour. This was the closest I found on the issue:
         // https://stackoverflow.com/questions/65014723/how-can-i-prevent-images-from-being-zoomed-in-out-when-clicked
