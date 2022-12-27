@@ -726,12 +726,15 @@ bool BrowserClient::OnConsoleMessage(CefRefPtr<CefBrowser>,
 				     const CefString &source, int line)
 {
 	int errorLevel = LOG_INFO;
+	const char *code = "Info";
 	switch (level) {
 	case LOGSEVERITY_ERROR:
 		errorLevel = LOG_WARNING;
+		code = "Error";
 		break;
 	case LOGSEVERITY_FATAL:
 		errorLevel = LOG_ERROR;
+		code = "Fatal";
 		break;
 	case LOGSEVERITY_INFO:
 		if (message.ToString().find("LOG_INFO") == 0) {
@@ -743,7 +746,12 @@ bool BrowserClient::OnConsoleMessage(CefRefPtr<CefBrowser>,
 		return false;
 	}
 
-	blog(errorLevel, "obs-browser: %s (source: %s:%d)",
+	const char *sourceName = "<unknown>";
+
+	if (bs && bs->source)
+		sourceName = obs_source_get_name(bs->source);
+
+	blog(errorLevel, "[obs-browser: '%s'] %s: %s (%s:%d)", sourceName, code,
 	     message.ToString().c_str(), source.ToString().c_str(), line);
 	return false;
 }
