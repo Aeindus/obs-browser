@@ -19,6 +19,7 @@
 #include <util/threading.h>
 #include <util/base.h>
 #include <thread>
+#include <cmath>
 
 #if !defined(_WIN32) && !defined(__APPLE__)
 #include <X11/Xlib.h>
@@ -31,6 +32,9 @@ extern os_event_t *cef_started_event;
 std::mutex popup_whitelist_mutex;
 std::vector<PopupWhitelistInfo> popup_whitelist;
 std::vector<PopupWhitelistInfo> forced_popups;
+
+static int zoomLvls[] = {25,  33,  50,  67,  75,  80,  90,  100,
+			 110, 125, 150, 175, 200, 250, 300, 400};
 
 /* ------------------------------------------------------------------------- */
 
@@ -80,6 +84,7 @@ struct QCefCookieManagerInternal : QCefCookieManager {
 		BPtr<char> path = os_get_abs_path_ptr(rpath.Get());
 
 		CefRequestContextSettings settings;
+		settings.persist_user_preferences = 1;
 		CefString(&settings.cache_path) = path.Get();
 		rc = CefRequestContext::CreateContext(
 			settings, CefRefPtr<CefRequestContextHandler>());
@@ -102,6 +107,7 @@ struct QCefCookieManagerInternal : QCefCookieManager {
 		BPtr<char> path = os_get_abs_path_ptr(rpath.Get());
 
 		CefRequestContextSettings settings;
+		settings.persist_user_preferences = 1;
 		CefString(&settings.cache_path) = storage_path;
 		rc = CefRequestContext::CreateContext(
 			settings, CefRefPtr<CefRequestContextHandler>());
@@ -412,7 +418,8 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 
 	if (!cefBrowser) {
 		obs_browser_initialize();
-		connect(&timer, SIGNAL(timeout()), this, SLOT(Init()));
+		connect(&timer, &QTimer::timeout, this,
+			&QCefWidgetInternal::Init);
 		timer.start(500);
 		Init();
 	}
@@ -445,6 +452,49 @@ void QCefWidgetInternal::setStartupScript(const std::string &script_)
 void QCefWidgetInternal::allowAllPopups(bool allow)
 {
 	allowAllPopups_ = allow;
+}
+
+bool QCefWidgetInternal::zoomPage(int direction)
+{
+	if (!cefBrowser || direction < -1 || direction > 1)
+		return false;
+
+	CefRefPtr<CefBrowserHost> host = cefBrowser->GetHost();
+	if (direction == 0) {
+		// Reset zoom
+		host->SetZoomLevel(0);
+		return true;
+	}
+
+	int currentZoomPercent = round(pow(1.2, host->GetZoomLevel()) * 100.0);
+	int zoomCount = sizeof(zoomLvls) / sizeof(zoomLvls[0]);
+	int zoomIdx = 0;
+
+	while (zoomIdx < zoomCount) {
+		if (zoomLvls[zoomIdx] == currentZoomPercent) {
+			break;
+		}
+		zoomIdx++;
+	}
+	if (zoomIdx == zoomCount)
+		return false;
+
+	int newZoomIdx = zoomIdx;
+	if (direction == -1 && zoomIdx > 0) {
+		// Zoom out
+		newZoomIdx -= 1;
+	} else if (direction == 1 && zoomIdx >= 0 && zoomIdx < zoomCount - 1) {
+		// Zoom in
+		newZoomIdx += 1;
+	}
+
+	if (newZoomIdx != zoomIdx) {
+		int newZoomLvl = zoomLvls[newZoomIdx];
+		// SetZoomLevel only accepts a zoomLevel, not a percentage
+		host->SetZoomLevel(log(newZoomLvl / 100.0) / log(1.2));
+		return true;
+	}
+	return false;
 }
 
 /* ------------------------------------------------------------------------- */

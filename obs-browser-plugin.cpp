@@ -33,7 +33,6 @@
 #include "browser-scheme.hpp"
 #include "browser-app.hpp"
 #include "browser-version.h"
-#include "browser-config.h"
 
 #include "json11/json11.hpp"
 #include "obs-websocket-api/obs-websocket-api.h"
@@ -167,9 +166,9 @@ static obs_properties_t *browser_source_get_properties(void *data)
 					 getFilesFilter(), path);
 
 	obs_properties_add_int(props, "width", obs_module_text("Width"), 1,
-			       4096, 1);
+			       8192, 1);
 	obs_properties_add_int(props, "height", obs_module_text("Height"), 1,
-			       4096, 1);
+			       8192, 1);
 
 	obs_properties_add_bool(props, "reroute_audio",
 				obs_module_text("RerouteAudio"));
@@ -390,6 +389,7 @@ static void BrowserInit(void)
 	BPtr<char> conf_path_abs = os_get_abs_path_ptr(conf_path);
 	CefString(&settings.locale) = obs_get_locale();
 	CefString(&settings.accept_language_list) = accepted_languages;
+	settings.persist_user_preferences = 1;
 	CefString(&settings.cache_path) = conf_path_abs;
 #if !defined(__APPLE__) || defined(ENABLE_BROWSER_LEGACY)
 	char *abs_path = os_get_abs_path_ptr(path.c_str());
@@ -441,6 +441,9 @@ static void BrowserInit(void)
 
 static void BrowserShutdown(void)
 {
+#if !ENABLE_LOCAL_FILE_URL_SCHEME
+	CefClearSchemeHandlerFactories();
+#endif
 #ifdef ENABLE_BROWSER_QT_LOOP
 	while (messageObject.ExecuteNextBrowserTask())
 		;
@@ -748,18 +751,6 @@ static void check_hwaccel_support(void)
 			device++;
 		}
 	}
-}
-#elif defined(__APPLE__)
-extern bool atLeast10_15(void);
-
-static void check_hwaccel_support(void)
-{
-	if (!atLeast10_15()) {
-		blog(LOG_INFO,
-		     "[obs-browser]: OS version older than 10.15 Disabling hwaccel");
-		hwaccel = false;
-	}
-	return;
 }
 #else
 static void check_hwaccel_support(void)
